@@ -7,10 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 package operations
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"io/ioutil"
 
+	tls "github.com/Hyperledger-TWGC/tjfoc-gm/gmtls"
+	x509GM "github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 	"github.com/hyperledger/fabric/core/comm"
 )
 
@@ -30,7 +30,7 @@ func (t TLS) Config() (*tls.Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		caCertPool := x509.NewCertPool()
+		caCertPool := x509GM.NewCertPool()
 		for _, caPath := range t.ClientCACertFiles {
 			caPem, err := ioutil.ReadFile(caPath)
 			if err != nil {
@@ -39,6 +39,8 @@ func (t TLS) Config() (*tls.Config, error) {
 			caCertPool.AppendCertsFromPEM(caPem)
 		}
 		tlsConfig = &tls.Config{
+			//TODO: matrix
+			GMSupport:    &tls.GMSupport{},
 			Certificates: []tls.Certificate{cert},
 			CipherSuites: comm.DefaultTLSCipherSuites,
 			ClientCAs:    caCertPool,

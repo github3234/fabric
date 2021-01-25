@@ -8,10 +8,11 @@ package comm
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"time"
 
+	tls "github.com/Hyperledger-TWGC/tjfoc-gm/gmtls"
+
+	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -75,8 +76,11 @@ func (client *GRPCClient) parseSecureOptions(opts *SecureOptions) error {
 		return nil
 	}
 	client.tlsConfig = &tls.Config{
+		//TODO: matrix
+		GMSupport:             &tls.GMSupport{},
 		VerifyPeerCertificate: opts.VerifyCertificate,
-		MinVersion:            tls.VersionTLS12} // TLS 1.2 only
+		MinVersion:            tls.VersionGMSSL} // TLS 1.2 only
+
 	if len(opts.ServerRootCAs) > 0 {
 		client.tlsConfig.RootCAs = x509.NewCertPool()
 		for _, certBytes := range opts.ServerRootCAs {
@@ -94,10 +98,12 @@ func (client *GRPCClient) parseSecureOptions(opts *SecureOptions) error {
 			opts.Certificate != nil {
 			cert, err := tls.X509KeyPair(opts.Certificate,
 				opts.Key)
+
 			if err != nil {
 				return errors.WithMessage(err, "failed to "+
 					"load client certificate")
 			}
+
 			client.tlsConfig.Certificates = append(
 				client.tlsConfig.Certificates, cert)
 		} else {

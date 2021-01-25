@@ -8,16 +8,18 @@ package comm
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
 	"fmt"
+	"github.com/hyperledger/fabric/bccsp/gm"
 	"io/ioutil"
 	"os"
 	"sync"
 	"time"
 
+	tls "github.com/Hyperledger-TWGC/tjfoc-gm/gmtls"
+	"github.com/Hyperledger-TWGC/tjfoc-gm/gmtls/gmcredentials"
+	"github.com/Hyperledger-TWGC/tjfoc-gm/x509"
 	"github.com/hyperledger/fabric/common/flogging"
 	"github.com/hyperledger/fabric/core/config"
 	"google.golang.org/grpc"
@@ -134,6 +136,8 @@ func (cs *CredentialSupport) GetDeliverServiceCredentials(
 		}
 	}
 
+	var gmSupport *tls.GMSupport
+
 	// Parse all PEM bundles and add them into the CA cert pool.
 	certPool := x509.NewCertPool()
 
@@ -142,6 +146,9 @@ func (cs *CredentialSupport) GetDeliverServiceCredentials(
 		if block != nil {
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err == nil {
+				if cert.PublicKeyAlgorithm == x509.SM2 && gmSupport == nil {
+					gmSupport = &tls.GMSupport{}
+				}
 				certPool.AddCert(cert)
 			} else {
 				commLogger.Warningf("Failed to add root cert to credentials: %s", err)
@@ -158,10 +165,13 @@ func (cs *CredentialSupport) GetDeliverServiceCredentials(
 	// Finally, create a TLS client config with the computed TLS root CAs.
 	var creds credentials.TransportCredentials
 	tlsConfig := &tls.Config{
+		//TODO: matrix
+		GMSupport:    &tls.GMSupport{},
 		Certificates: []tls.Certificate{cs.clientCert},
 		RootCAs:      certPool,
 	}
-	creds = credentials.NewTLS(tlsConfig)
+
+	creds = gmcredentials.NewTLS(tlsConfig)
 	return creds, nil
 }
 
@@ -174,6 +184,11 @@ func (cs *CredentialSupport) GetPeerCredentials() credentials.TransportCredentia
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cs.clientCert},
 	}
+
+	if gm.IsPureGMTLSCertificate(&cs.clientCert) {
+		tlsConfig.GMSupport = &tls.GMSupport{}
+	}
+	
 	certPool := x509.NewCertPool()
 	appRootCAs := [][]byte{}
 	for _, appRootCA := range cs.AppRootCAsByChain {
@@ -190,7 +205,7 @@ func (cs *CredentialSupport) GetPeerCredentials() credentials.TransportCredentia
 	}
 
 	tlsConfig.RootCAs = certPool
-	return credentials.NewTLS(tlsConfig)
+	return gmcredentials.NewTLS(tlsConfig)
 }
 
 func getEnv(key, def string) string {
@@ -257,7 +272,14 @@ func InitTLSForShim(key, certStr string) credentials.TransportCredentials {
 	if !cp.AppendCertsFromPEM(b) {
 		commLogger.Panicf("failed to append certificates")
 	}
-	return credentials.NewTLS(&tls.Config{
+
+	var gmSupport *tls.GMSupport
+	if gm.IsPureGMTLSCertificate(&cert) {
+		gmSupport = &tls.GMSupport{}
+	}
+
+	return gmcredentials.NewTLS(&tls.Config{
+		GMSupport:    gmSupport,
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      cp,
 		ServerName:   sn,
